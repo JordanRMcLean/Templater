@@ -1,0 +1,43 @@
+{INCLUDE: header.html}
+
+<!-- Main page content -->
+<h3>Includes</h3>
+Includes have been used to include the Header and Footer of this page. See example.html
+
+<h3>Conditions</h3>
+Below is a conditional statement to show the users, you should see them listed out.<br>
+It also makes use of the magic loop variables 'IS_FIRST_ROW', 'IS_LAST_ROW', 'IS_ODD_ROW', 'IS_EVEN_ROW'
+{IF: show_users}
+	<div style="margin-left: 150px">
+	<h4>Loops</h4>
+	{LOOP: user}
+	<div>
+		{IF: user.IS_FIRST_ROW}First User: {/IF}
+		{IF: user.IS_LAST_ROW}Last User: {/IF}
+		User with ID of {user.id} is called {user.name} and is {user.age} years old.
+		{IF: user.IS_EVEN_ROW} Even Row.{ELSE:} Odd Row.{/IF}
+	</div>
+	{/LOOP: user}
+	</div>
+{/IF}
+
+<br><br>
+<h3>Namespaced/Nested Template Vars</h3>
+Current User ID: {current_user:id} <br>
+Current User Name: {current_user:name} <br>
+User Level: {current_user:permissions}<br>
+Current Session: {current_user:session:id} started at {current_user:session:start}<br>
+
+<h3>PHP Constants</h3>
+PHP and defined Constants can be directly outputted in the template. <br>
+Our Constant: {C:OUR_CONSTANT} <br>
+
+<h3>Ignore Blocks</h3>
+Ignore blocks can be defined so they are not parsed. This is useful when using similar structures to the template syntax. <br>
+
+{IGNORE}Even though this template var exists, it is ignored: {page_title} and {current_user:id}{/IGNORE}
+<br>
+{IGNORE}Second ignore block displaying an unparsed condition: {IF: not show_users}No users{/IF}{/IGNORE}
+<br>
+
+{INCLUDE: footer.html}
