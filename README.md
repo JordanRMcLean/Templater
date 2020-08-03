@@ -6,14 +6,14 @@ Basic Template Vars:
 ------------------------
  Template vars can contains 0-9, a-z, A-Z and _ and must be 3 characters in length at least.
    
-    $template_class->set('BASIC_VAR', 'value');
+    $template->set('BASIC_VAR', 'value');
     Use in template as {BASIC_VAR} -> value
   
 Nested/Namespaced Template Vars:
 ---------------------------
   Template vars can be nested inside each other for name spacing.
   
-    $template_class->set('USER:NAME', 'value');
+    $template->set('USER:NAME', 'value');
     OR $template->set('USER', array('NAME' => 'value', 'ID' => 1));
     Use in template as {USER:NAME}
   
