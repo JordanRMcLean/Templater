@@ -16,28 +16,33 @@ class TemplateParser implements Parser
 {
 	private $handle_errors = true;
 	private $last_error_message = '';
-	private $max_cache_age = 36000;
+	private $max_cache_age = 3600;
 
 	private $regex = array(
-		'output_match'		=> '#\\{(C:)?(?:[0-9a-zA-Z_:]{3,})\\}#',
+		'output_match'		=> '#\\{(C:)?[0-9a-zA-Z_]{3,}(?::[0-9a-zA-Z_]+)*\\}#',
 		'condition_match'	=> '#\\{(?:IF|ELSEIF):\\s.+?(\\s([!=<>]=?|&&|(?:\\|\\|)|neq|eq|and|not|or|gt|lt|gte|lte) .+?)*\\}#',
-		'loop_match'		=> '#\\{LOOP: ([0-9a-zA-Z_]{3,}?)\\}(?:.|[\\n\\r])*?\\{/LOOP: \\1\\}#',
+		'loop_match'		=> '#\\{LOOP: ([0-9a-zA-Z_\.]{3,}?)\\}(?:.|[\\n\\r])*?\\{/LOOP: \\1\\}#',
 		'include_match'		=> '#\\{INCLUDE: (.*?)\\}#',
 		'ignore_match'		=> '#\\{IGNORE\\}((?:.|[\\r\\n])*?)\\{/IGNORE\\}#',
 		'ignore_tags'		=> '#\\{/?IGNORE\\}#',
 
 		'operator'			=> '#([!=<>]=?|&&|(?:\\|\\|)|neq|eq|and|not|or|gt|lt|gte|lte)#',
-		'output_block'		=> '#^[0-9a-zA-Z_]{3,}(:[0-9a-zA-Z_]+)*$#',
+		'output_block'		=> '#^(?:C:)?[0-9a-zA-Z_]{3,}(:[0-9a-zA-Z_]+)*$#',
 		'endif'				=> '#\\{/IF\\}#',
 		'else'				=> '#\\{ELSE:\\s?\\}#'
 	);
 
 
 
-	function __construct($handle_errors = true, $max_cache_age = 36000)
+	function __construct($handle_errors = null, $max_cache_age = null)
 	{
-		$this->handle_errors = $handle_errors;
-		$this->max_cache_age = $max_cache_age;
+		if($handle_errors !== null) {
+			$this->handle_errors = $handle_errors;
+		}
+
+		if($max_cache_age !== null) {
+			$this->max_cache_age = $max_cache_age;
+		}
 	}
 
 
@@ -95,10 +100,10 @@ class TemplateParser implements Parser
 			return null;
 		}
 
-		$cache = $template->template_dir . '/cached';
-		$file = $cache . '/parsed_' . $template->filename();
+		$cache_directory = $template->template_dir . '/cached';
+		$cached_file = $cache_directory . '/parsed_' . $template->filename('cache');
 
-		if( !file_exists($cache) )
+		if( !file_exists($cache_directory) )
 		{
 			//create cache directory.
 			@mkdir($cache, 0755);
@@ -108,35 +113,44 @@ class TemplateParser implements Parser
 		{
 			//its been parsed so cache it.
 			//supress errors in case file permissions do not allow.
-			@file_put_contents($file, $template->get_parsed());
+			@file_put_contents($cached_file, $template->get_parsed());
 		}
 		else
 		{
+			//if max age is 0 or less then caching is disabled so
+			//no need to waste our time any further.
+			if( $this->max_cache_age <= 0 ) {
+				return null;
+			}
+
 			//The template has not been parsed so check if a cached version exists and provide it.
-			if( file_exists($file) )
+			if( file_exists($cached_file) )
 			{
 				//time when cached
-				$cached_time = filemtime($file);
+				$cached_time = filemtime($cached_file);
 
 				//last modification of the original template.
-				$last_modified = filemtime($template->filename(true));
+				$last_modified = filemtime($template->filename('full'));
 
 				if($last_modified > $cached_time)
 				{
 					//time now - cached_time = the age. If younger than max cache age then good to use.
 					if( (time() - $cached_time) < $this->max_cache_age )
 					{
-						return file_get_contents($file);
+						return file_get_contents($cached_file);
 					}
 
 					//the cached version is older than our max age
+					//delete this outdated cache file.
+					unlink($cached_file);
+
 					//return null to cause re-parsing
 					return null;
 				}
 				else
 				{
 					//Been cached more recently than last modification so return it
-					return file_get_contents($file);
+					return file_get_contents($cached_file);
 				}
 			}
 		}
@@ -334,7 +348,17 @@ class TemplateParser implements Parser
 
 			if( preg_match($this->regex['output_block'], $part) ) //is this an output var used in the condition?
 			{
-				$new_condition_parts[] = $this->parse_output_block($part);
+				$part = $this->parse_output_block($part);
+
+				//is this a constant being used?
+				if(preg_match('#^[A-Z0-9_]+$#', $part))
+				{
+					$new_condition_parts[] = "(defined('$part') && $part)";
+				}
+				else
+				{
+					$new_condition_parts[] = $part;
+				}
 			}
 			elseif( preg_match($this->regex['operator'], $part) ) //is this part of the condition an operator?
 			{
