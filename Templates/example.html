@@ -1,43 +1,81 @@
-{INCLUDE: header.html}
+{INCLUDE: header}
+
 
 <!-- Main page content -->
-<h3>Includes</h3>
-Includes have been used to include the Header and Footer of this page. See example.html
+<h2>Template Includes</h2>
+Include other templates using the following code:
+<code>
+{IGNORE}{INCLUDE: included_template}{/IGNORE}
+</code>
 
-<h3>Conditions</h3>
-Below is a conditional statement to show the users, you should see them listed out.<br>
-It also makes use of the magic loop variables 'IS_FIRST_ROW', 'IS_LAST_ROW', 'IS_ODD_ROW', 'IS_EVEN_ROW'
-{IF: show_users}
-	<div style="margin-left: 150px">
-	<h4>Loops</h4>
-	{LOOP: user}
-	<div>
-		{IF: user.IS_FIRST_ROW}First User: {/IF}
-		{IF: user.IS_LAST_ROW}Last User: {/IF}
-		User with ID of {user.id} is called {user.name} and is {user.age} years old.
-		{IF: user.IS_EVEN_ROW} Even Row.{ELSE:} Odd Row.{/IF}
-	</div>
-	{/LOOP: user}
-	</div>
+<h2>Basic Output</h2>
+Output basic template vars like so:
+<code>
+{IGNORE}{BASIC_TEMPLATE_VAR}{/IGNORE}
+</code>
+
+<h2>Conditions</h2>
+Conditional statements can be used in templates using the following syntax:
+<code>
+{IGNORE}{IF: condition}  code {/IF}{/IGNORE}
+</code>
+
+Below is a conditional statement with the SHOW_TIME variable, you should see the time. <br>
+{IF: SHOW_TIME}Current Time: {TIME}{/IF}
+
+
+<h2>Template Loops</h2>
+Template loops are used to iterate over several records using the following syntax:
+<code>
+{IGNORE}{LOOP: loop_name} loop content {loop_name.LOOP_VARIABLE} {/LOOP: loop_name}{/IGNORE}
+</code>
+
+Below is a loop of our users listing them out.
+It also makes use of the magic loop variables 'IS_FIRST_ROW', 'IS_LAST_ROW', 'IS_ODD_ROW', 'IS_EVEN_ROW' which are useful for styling,
+
+{IF: SHOW_USERS}
+	<h3>Loops</h3>
+	<table style="margin-left: 150px">
+		<tr>
+			<td>ID</td> <td>Name</td> <td>Age</td> <td>Comments</td>
+		</tr>
+
+	{LOOP: users}
+		<tr>
+			<td>{users.ID}</td> <td>{users.NAME}</td> <td>{users.AGE}</td>
+			<td>
+			{IF: users.IS_FIRST_ROW}First user.{ELSEIF: users.IS_LAST_ROW}Last user.{/IF}
+			{IF: users.IS_EVEN_ROW} Even Row{ELSE:} Odd Row{/IF}
+		</tr>
+	{/LOOP: users}
+
+	</table>
 {/IF}
 
 <br><br>
-<h3>Namespaced/Nested Template Vars</h3>
-Current User ID: {current_user:id} <br>
-Current User Name: {current_user:name} <br>
-User Level: {current_user:permissions}<br>
-Current Session: {current_user:session:id} started at {current_user:session:start}<br>
+<h2>Namespaced/Nested Template Vars</h2>
+Template variables can be namespaced for seperation. For example:
+<code>{IGNORE}{NAMESPACE:VARIABLE}{/IGNORE}</code>
+
+Below we our outputting our CURRENT_USER variables.
+<div>
+Current User ID: {CURRENT_USER:ID} <br>
+Current User Name: {CURRENT_USER:FORENAME} <br>
+User Role: {CURRENT_USER:JOB}<br>
+Current User Session (nested twice): Session {CURRENT_USER:SESSION:ID} started at {CURRENT_USER:SESSION:START}<br>
+</div>
 
 <h3>PHP Constants</h3>
-PHP and defined Constants can be directly outputted in the template. <br>
-Our Constant: {C:OUR_CONSTANT} <br>
+PHP and defined Constants can be directly outputted in the template by prepending them with "C:" like so:
+<code>{IGNORE}{C:CONSTANT}{/IGNORE}</code>
+Our MY_SITE_NAME constant set in index.php: {C:MY_SITE_NAME} <br>
 
 <h3>Ignore Blocks</h3>
 Ignore blocks can be defined so they are not parsed. This is useful when using similar structures to the template syntax. <br>
 
-{IGNORE}Even though this template var exists, it is ignored: {page_title} and {current_user:id}{/IGNORE}
+{IGNORE}Even though this template var exists, it is ignored: {PAGE_TITLE}{/IGNORE}
 <br>
-{IGNORE}Second ignore block displaying an unparsed condition: {IF: not show_users}No users{/IF}{/IGNORE}
+{IGNORE}Second ignore block displaying an unparsed condition: {IF: not SHOW_USERS}No users{/IF}{/IGNORE}
 <br>
 
-{INCLUDE: footer.html}
+{INCLUDE: footer}

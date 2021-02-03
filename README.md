@@ -2,79 +2,128 @@
 PHP/HTML templater
 
 
-Basic Template Vars:
+## Basic Template Vars:
 ------------------------
- Template vars can contains 0-9, a-z, A-Z and _ and must be 3 characters in length at least.
-   
-    $template->set('BASIC_VAR', 'value');
-    Use in template as {BASIC_VAR} -> value
-  
-Nested/Namespaced Template Vars:
+Template vars can contain 0-9, A-Z and _ and must be 2 or more characters in length.
+
+Use in PHP: `$template->set('BASIC_VAR', 'value');`
+Use in Template: `{BASIC_VAR}`
+
+
+## Nested/Namespaced Template Vars:
 ---------------------------
-  Template vars can be nested inside each other for name spacing.
-  
-    $template->set('USER:NAME', 'value');
-    OR $template->set('USER', array('NAME' => 'value', 'ID' => 1));
-    Use in template as {USER:NAME}
-  
-Conditionals:
+Template vars can be nested inside each other for namespacing and follow the same rules as above.
+
+Use in PHP:
+```php
+	$template->set('USER:NAME', 'value');
+
+	$template->set('USER', array('NAME' => 'value', 'ID' => 1));
+```
+Use in Template: `{USER:NAME} {USER:ID}`
+
+Template vars can be nested several times: `{USER:ROLE:NAME}`
+
+## Conditionals:
 ----------------
-  Conditional statements can be used in the templates as so:
-  
-      {IF: condition} ... {ELSEIF: condition} ... {ELSE:} ... {/IF} - space between colon and condition is vital except in {ELSE:}
-      
-Condition:
-* The condition can be any valid PHP conditional expression
-* The condition can optionally contain template vars and nested vars in. Eg. {IF: BASIC_VAR > 5} or {IF: USER:ID == 5}
-* The condition can be strung for longer conditions: {IF: BASIC_VAR > 5 && BASIC_VAR < 10}
-* The condition can use additional operators: and, or, not, eq, neq, gt, lt, lte, gte {IF: not USER}
-* Each part of the condition must be seperated by a space. DONT use space in any of literal values in conditions.
-* The condition can be wrapped in braces for priority evaluating: Eg {IF: (BASIC_VAR > 5) && OTHER_VAR}
-  
-Loops:
+Conditional statements can be used in the templates for dynamic content.
+Conditions follow these rules:
+- can be any valid PHP conditional expression
+- can contain template vars and nested vars. `{IF: BASIC_VAR > 5} {IF: USER:ID == 5}`
+- can be strung for longer conditions: `{IF: BASIC_VAR > 5 && BASIC_VAR < 10}`
+- can use additional operators: and, or, not, eq, neq, gt, lt, lte, gte `{IF: not USER}`
+- can be wrapped in braces for priority evaluating: Eg `{IF: (BASIC_VAR > 5) && OTHER_VAR}`
+- space after the colon is vital except in `{ELSE:}`
+
+Use in Template:
+```
+	{IF: condition}
+ 		...
+	{ELSEIF: condition}
+		...
+	{ELSE:}
+		...
+	{/IF}
+```
+
+## Template Loops:
 ----------------
-Loops can be used for repeating blocks. Loop names should be named with the same naming conventions as template vars.
+Loops can be used for iterating within the template.
+Loop names can contain 0-9, a-z and _ and must be 2 or more characters in length.
 
-    $template->set_loop('myloop', array('LOOPVAR' => 1, 'VARLOOP' => 2)); // first record of loop
-    $template->set_loop('myloop', array('LOOPVAR' => 2, 'VARLOOP' => 3)); // second record of loop
-    
-In template:
-    
-      {LOOP: myloop} Loop var: {myloop.LOOPVAR}, Var Loop: {myloop.VARLOOP} {/LOOP: myloop}
-      Result: Loop var: 1, Var Loop: 2 Loop var: 2, Var Loop: 3
-  
-Loop vars can be used in conditions: 
-     
-     {IF: myloop.LOOPVAR == 2}
-     
-Loops can be nested:
+Use in PHP:
+```php
+	// first record of loop
+    $template->set_loop('users', array(
+		'ID' 	=> 1,
+		'NAME' 	=> 'Bill'
+	));
 
-     {LOOP: myloop} {LOOP: myloop.innerloop} {myloop.innerloop.INNERVAR} {/LOOP: myloop.innerloop} {/LOOP: myloop}
-  
-Loops can NOT be nested/namesspaced vars:
+	// second record of loop. Usually used in foreach loop to add multiple records.
+    $template->set_loop('users', array(
+		'ID'	=> 2,
+		'NAME' 	=> 'Ben'
+	));
+```
 
-     {LOOP: NAME:loop} - X - NOT ALLOWED
-    
- However namespace vars can be used in loops:
- 
-     {LOOP: myloop} {myloop.NAME:VAR} {/LOOP: myloop}
-  
-Includes:
+Use in Template:
+```
+	{LOOP: users}
+		ID: {users.ID}
+		Name: {users.NAME}
+	{/LOOP: users}
+```
+
+Loops abide by the following the rules:
+- Loop vars can be used in conditions: `{IF: users.ID == 2}`
+- Loops CAN NOT be namespaced vars: `{LOOP: NAME:loop}`
+- Namespaced vars can be used in loops: `{users.ROLE:ID}`
+
+
+Loops can be nested within each other using period separator:
+
+Use in PHP:
+```php
+	$template->set_loop('users.titles', [
+		['ID' => 1, 'NAME' => 'Admin'],
+		['ID' => 2, 'NAME' => 'Mod']
+	]);
+```
+
+Use in Template:
+```
+	{LOOP: users}
+		...
+		{LOOP: users.titles}
+			Title ID: {users.title.ID}
+			Title Name: {users.titles.NAME}
+		{/LOOP: users.titles}
+		...
+	{/LOOP: users}
+```
+
+
+## Template Includes:
 ------------------
-Includes can be used to include another template which will also get parsed. 
+Includes can be used to include another template which will also get parsed.
+Do not include the file extension if specified in the Template class.
 
-    {INCLUDE: header.html}
-  
- 
-Ignore block:
+`{INCLUDE: header.html}` or `{INCLUDE: header}`
+
+
+## Ignore Block:
 -----------------
 Ignore blocks are ignored by the parser, and nothing in it is parsed.
 
-    {IGNORE} {THIS_VAR_WILL_NOT_BE_PARSED} {/IGNORE}
-	
-Constant Output Var:
---------------------
-You can output PHP constants or defined constants directly in the templates: 
+```
+	{IGNORE}
+		{THIS_VAR_WILL_NOT_BE_PARSED}
+	{/IGNORE}
+```
 
-  	{C:PHP_CONSTANT} or {IF: C:PHP_CONSTANT == TEMPLATE_VAR}
- 
+## Constant Output Var:
+--------------------
+You can output PHP constants in the templates or use them within conditions:
+`PHP version: {C:PHP_VERSION}`
+
+# Thats all folks!

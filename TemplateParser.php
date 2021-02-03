@@ -1,76 +1,117 @@
 <?php
 
+namespace Template;
+
 //For use with Template.php class
 //PHP 7+ required.
 
-// define an interface so all code written using template parser can be re-used
-// with future/other Templaters that follow the same interface.
-interface Parser {
-	public function parse(&$template);
-	public function compile(&$template);
-}
 
-
-
-class TemplateParser implements Parser
+class TemplateParser
 {
-	private $handle_errors = true;
-	private $last_error_message = '';
-	private $max_cache_age = 3600;
+	/* Option whether the TemplateParser will handle errors, aka output an error message
+	*  Or false to just throw an Exception to be caught.
+	*  Can be set within construct.
+	*/
+	private $handle_errors = false;
 
+	/* All regex used in the template parsing.
+	*  Can be edited to suit needs.
+	*/
 	private $regex = array(
-		'output_match'		=> '#\\{(C:)?[0-9a-zA-Z_]{3,}(?::[0-9a-zA-Z_]+)*\\}#',
-		'condition_match'	=> '#\\{(?:IF|ELSEIF):\\s.+?(\\s([!=<>]=?|&&|(?:\\|\\|)|neq|eq|and|not|or|gt|lt|gte|lte) .+?)*\\}#',
-		'loop_match'		=> '#\\{LOOP: ([0-9a-zA-Z_\.]{3,}?)\\}(?:.|[\\n\\r])*?\\{/LOOP: \\1\\}#',
+		'var_match'			=> '#\\{(?:C:|(?:[0-9a-z_]+\\.)+)?[0-9A-Z_]{2,}(:[0-9A-Z_]+)*\\}#',
+		'condition_match'	=> '#\\{(IF|ELSEIF):\\s(.+?)\\}#',
+		'loop_match'		=> '#\\{LOOP: ([0-9a-z_\\.]{2,})\\}(?:.|[\\n\\r])*?\\{/LOOP: \\1\\}#',
 		'include_match'		=> '#\\{INCLUDE: (.*?)\\}#',
 		'ignore_match'		=> '#\\{IGNORE\\}((?:.|[\\r\\n])*?)\\{/IGNORE\\}#',
-		'ignore_tags'		=> '#\\{/?IGNORE\\}#',
 
-		'operator'			=> '#([!=<>]=?|&&|(?:\\|\\|)|neq|eq|and|not|or|gt|lt|gte|lte)#',
-		'output_block'		=> '#^(?:C:)?[0-9a-zA-Z_]{3,}(:[0-9a-zA-Z_]+)*$#',
+
+		'operator'			=> '#^([!=<>]=?|&&|(?:\\|\\|)|neq|eq|and|not|or|gt|lt|gte|lte)$#',
+		'condition_break'	=> '#^[\\(\\)\s!]$#',
+		'var'				=> '#^(C:)?[0-9A-Z_]{2,}(:[0-9A-Z_]+)*$#',
+		'constant'			=> '#^C:[A-Z0-9_:]+$#',
+		'loop_var'			=> '#^((?:[0-9a-z_]+\\.)+)[0-9A-Z_]{2,}(?::[0-9A-Z_]+)*$#',
+
 		'endif'				=> '#\\{/IF\\}#',
-		'else'				=> '#\\{ELSE:\\s?\\}#'
+		'else'				=> '#\\{ELSE:\\s?\\}#',
+		'ignore_tags'		=> '#\\{/?IGNORE\\}#',
 	);
 
+	/* Static shortuct for creation of new template.
+	*  Template Includes use this function to create a new template and get its contents.
+	*  So if using a different template class, this will need updating.
+	*/
+	public static function new($file = null) {
+		return new Template($file);
+	}
 
-
-	function __construct($handle_errors = null, $max_cache_age = null)
-	{
+	/*  Set handle_errors option through construct.
+	*/
+	function __construct($handle_errors = null) {
 		if($handle_errors !== null) {
 			$this->handle_errors = $handle_errors;
 		}
-
-		if($max_cache_age !== null) {
-			$this->max_cache_age = $max_cache_age;
-		}
 	}
 
-
-	public function compile(&$template)
-	{
-		if( !is_object($template) || !($template instanceof Template) )
-		{
-			return $this->error('Compiler must receive Template object to compile.');
+	/* Compile template with the vars ready for rendering the output.
+	*/
+	public function compile(&$template) {
+		if( !is_object($template) || !($template instanceof Template) ) {
+			return $this->error('TemplateParse must receive Template object.');
 		}
 
-		if($template->is_compiled())
-		{
+		//removed to allow 're-compiling'
+		/*if($template->is_compiled()) {
 			return $template->get_compiled();
-		}
+		}*/
 
-		if(!$template->is_parsed())
-		{
+		//if it hasn't been parsed yet we must do that first.
+		//which is the long bit, which gets cached.
+		if(!$template->is_parsed()) {
 			$this->parse($template);
 		}
 
 		$parsed_content = $template->get_parsed();
 		$vars = $template->get_vars();
 
-		//Start output buffering and eval the template
+		//Start output buffering
 		ob_start();
-		eval('?>' . $parsed_content);
-		$compiled_content = ob_get_clean();
 
+		try {
+
+			//we're going to temporarily remove E_NOTICE for parsing the template.
+			//otherwise we'd get a notice error for any vars used in the template that haven't been set.
+			$current_error_level = error_reporting();
+			error_reporting($current_error_level & ~E_NOTICE);
+
+			//yes. eval is evil... but given that we have set the eval'd content
+			//the only vulnerabilities are if there is any php in the template.
+			//which is unlikely given templates are used to seperate html and php.
+			eval('?>' . $parsed_content);
+
+			//return the error reporting level.
+			error_reporting($current_error_level);
+		}
+		catch(\Throwable $e) {
+
+			//parsing has failed which means the template wasn't written correctly.
+			$lines = explode("\n", $parsed_content);
+			$line = $e->getLine();
+			$error_line = $lines[$line];
+
+			//move backwards until we have a line with content.
+			while( empty($error_line) || preg_match('#^[\s\t\r\n]+$#', $error_line) ) {
+				$error_line = $lines[ --$line ];
+
+				if($line === 0) {
+					break;
+				}
+			}
+
+			$message = 'Template Compiling Error: ' . $e->getMessage() . "\n at line " . $e->getLine() . ': ' . htmlspecialchars($error_line);
+			$this->error($message);
+		}
+
+		$compiled_content = ob_get_clean();
 
 		$template->set_compiled($compiled_content);
 
@@ -78,239 +119,101 @@ class TemplateParser implements Parser
 	}
 
 
-	private function error($message)
-	{
-		if($this->handle_errors)
-		{
-			//could write a fancy error template to use here.
-			trigger_error($message);
-		}
-		else
-		{
-			$this->error = $message;
-		}
-	}
-
-
-	public function cache($template)
-	{
-		if( !is_object($template) || !($template instanceof Template) )
-		{
-			$this->error('Compiler must receive Template object to compile.');
-			return null;
+	/* Parses the template, turning it into executable PHP.
+	*  Returns the instance of this object so can chain the compile function ->parse()->compile()
+	*/
+	public function parse(&$template) {
+		if( !is_object($template) || !($template instanceof Template) )	{
+			return $this->error('TemplateParser must receive Template object');
 		}
 
-		$cache_directory = $template->template_dir . '/cached';
-		$cached_file = $cache_directory . '/parsed_' . $template->filename('cache');
-
-		if( !file_exists($cache_directory) )
-		{
-			//create cache directory.
-			@mkdir($cache, 0755);
-		}
-
-		if( $template->is_parsed() )
-		{
-			//its been parsed so cache it.
-			//supress errors in case file permissions do not allow.
-			@file_put_contents($cached_file, $template->get_parsed());
-		}
-		else
-		{
-			//if max age is 0 or less then caching is disabled so
-			//no need to waste our time any further.
-			if( $this->max_cache_age <= 0 ) {
-				return null;
-			}
-
-			//The template has not been parsed so check if a cached version exists and provide it.
-			if( file_exists($cached_file) )
-			{
-				//time when cached
-				$cached_time = filemtime($cached_file);
-
-				//last modification of the original template.
-				$last_modified = filemtime($template->filename('full'));
-
-				if($last_modified > $cached_time)
-				{
-					//time now - cached_time = the age. If younger than max cache age then good to use.
-					if( (time() - $cached_time) < $this->max_cache_age )
-					{
-						return file_get_contents($cached_file);
-					}
-
-					//the cached version is older than our max age
-					//delete this outdated cache file.
-					unlink($cached_file);
-
-					//return null to cause re-parsing
-					return null;
-				}
-				else
-				{
-					//Been cached more recently than last modification so return it
-					return file_get_contents($cached_file);
-				}
-			}
-		}
-
-		return null;
-	}
-
-
-	//Turns the template into actual PHP which can be executed.
-	//Returns the instance of this object so can chain the compile function ->parse()->compile()
-	public function parse(&$template = false)
-	{
-		if( !is_object($template) || !($template instanceof Template) )
-		{
-			return $this->error('Compiler must receive Template object to compile.');
-		}
-
-		if($template->is_parsed())
-		{
+		if($template->is_parsed()) {
 			return $this;
 		}
 
-		//before parsing check if it has been cached.
-		$cached = $this->cache($template);
-
-		if($cached) //the parsed template was cached, so no need to parse.
-		{
-			$template->set_parsed($cached);
-			return $this;
-		}
-
-		//no cached template, so begin parsing.
-		$content = $template->get_unparsed_content();
+		$content = $template->get_content();
 
 		//Steps to parsing:
 		//1. remove ignore blocks.
 		//2. include any include templates
 		//3. replace all output variables
-		//4. replace all loop blocks
-		//5. sort conditions out
+		//4. sort conditions out
+		//5. replace all loop blocks
 		//6. return ignore blocks
 
 
 		//1. remove ignore blocks and store them until the end.
-		$ignore_blocks = array();
 		$ignore_blocks_storage = array();
-		preg_match_all($this->regex['ignore_match'], $content, $ignore_blocks);
-		$ignore_blocks = $ignore_blocks[0];
+		$ignore_blocks = $this->matches('ignore_match', $content);
+		$replacement_key = 'IGNORE_BLOCK_' . time() . '_';
+		$i = 0;
 
-		if($ignore_blocks)
-		{
-			$i = 0;
-			$replacement_key = 'IGNORE_BLOCK_' . time() . '_';
+		foreach($ignore_blocks as $blok) {
+			//what we will be replacing it with. the @ stops it being matched as output.
+			$replacement_var = '{@' . $replacement_key . ($i++) .'@}';
+			$replacement_content = preg_replace($this->regex['ignore_match'], '$1', $blok);
 
-			foreach($ignore_blocks as $blok)
-			{
-				$replacement_var = '{@' . $replacement_key . ($i++) .'@}';
-				$replacement_content = preg_replace($this->regex['ignore_match'], '$1', $blok);
+			//store the ignore content
+			$ignore_blocks_storage[ $replacement_var ] = $replacement_content;
 
-				//store the ignore content
-				$ignore_blocks_storage[ $replacement_var ] = $replacement_content;
-
-				//Replace the ignore content with unique replacement.
-				$content = str_replace($blok, $replacement_var, $content);
-			}
+			//Replace the ignore content with unique replacement.
+			$content = str_replace($blok, $replacement_var, $content);
 		}
-		//now all ignore blocks have been swapped for unique vars and will be added in just like normal vars.
 
 
 		//2. include any include templates
-		$include_vars = array();
+		//we use a while loop so that any includes within includes are also included.
+		while( $this->match('include_match', $content) ) {
+			$include_vars = $this->matches('include_match', $content);
 
-		while(preg_match($this->regex['include_match'], $content) === 1)
-		{
-			preg_match_all($this->regex['include_match'], $content, $include_vars);
-			$include_vars = $include_vars[0];
-
-			//we need the directory of the template to include other templates within the dame directory.
-			$directory = $template->template_dir;
-
-			if($include_vars)
-			{
-				foreach($include_vars as $i_var)
-				{
-					$replacement = $this->parse_include_block($i_var, $directory);
-					$content = str_replace($i_var, $replacement, $content);
-				}
-			}
-		}
-
-		//3. Replace all output vars
-		$vars = $template->get_vars();
-
-		$output_vars = array();
-		preg_match_all($this->regex['output_match'], $content, $output_vars);
-		$output_vars = $output_vars[0];
-
-		if($output_vars)
-		{
-			foreach($output_vars as $t_var)
-			{
-				$var_alias = $this->parse_output_block($t_var);
-				if(preg_match('#^[A-Z0-9_]+$#', $var_alias)) //is this a constant?
-				{
-
-					$replacement = "<?php if(defined('$var_alias')): echo $var_alias; endif; ?>";
-				}
-				else
-				{
-					$replacement = "<?php echo isset($var_alias) ? $var_alias : '' ?>";
-				}
-
-				$content = str_replace($t_var, $replacement, $content);
-			}
-		}
-
-		//4. Replace all loop blocks
-		$loop_blocks = array();
-		preg_match_all($this->regex['loop_match'], $content, $loop_blocks);
-		$loop_blocks = $loop_blocks[0];
-
-
-		if($loop_blocks)
-		{
-			foreach($loop_blocks as $l_var)
-			{
-				$replacement = $this->parse_loop_block($l_var);
-				$content = str_replace($l_var, $replacement, $content);
+			foreach($include_vars as $i_var) {
+				$replacement = $this->parse_include_block($i_var);
+				$content = str_replace($i_var, $replacement, $content);
 			}
 		}
 
 
-		//5. Sort conditions out
-		$condition_blocks = array();
-		preg_match_all($this->regex['condition_match'], $content, $condition_blocks);
-		$condition_blocks = $condition_blocks[0];
+		//3. Replace all template vars
+		$output_vars = $this->matches('var_match', $content);
 
-		if($condition_blocks)
-		{
-			foreach($condition_blocks as $c_var)
-			{
-				$stripped_condition = preg_replace('#^\{|\}$#', '', $c_var);
-				$replacement = $this->parse_condition_block($stripped_condition);
-				$content = str_replace($c_var, $replacement, $content);
-			}
+		foreach($output_vars as $t_var) {
+			$replacement = $this->parse_output_block($t_var);
+			$content = str_replace($t_var, $replacement, $content);
+		}
+
+
+		//4. Sort conditions out
+		$condition_blocks = $this->matches('condition_match', $content);
+
+		foreach($condition_blocks as $c_var) {
+			$replacement = $this->parse_condition_block($c_var);
+			$content = str_replace($c_var, $replacement, $content);
 		}
 
 		$content = preg_replace($this->regex['else'], '<?php else: ?>', $content);
 		$content = preg_replace($this->regex['endif'], '<?php endif; ?>', $content);
 
 
+		//5. Replace all loop blocks
+		$loop_blocks = $this->matches('loop_match', $content);
+
+		foreach($loop_blocks as $l_var) {
+			$replacement = $this->parse_loop_block($l_var);
+			$content = str_replace($l_var, $replacement, $content);
+		}
+
 		//6. return ignore blocks
 		foreach($ignore_blocks_storage as $unique_key => $ignored_content) {
 			$content = str_replace($unique_key, $ignored_content, $content);
-
 		}
 
+		//set the templates parsed content. and cache it.
 		$template->set_parsed($content);
 
-		$this->cache($template);
+		//check if there is a cache method as isnt included in interface.
+		if( method_exists($template, 'cache') ) {
+			$template->cache();
+		}
 
 		//return this object in order to optionally chain compile method straight after.
 		return $this;
@@ -320,211 +223,212 @@ class TemplateParser implements Parser
 	//Private functions for parsing from here on.
 	//---------------------------------------------
 
-	private function parse_condition_block($condition)
-	{
+	/* Parse a template variable to return its correct PHP equivalent. Not its value.
+	*/
+	private function parse_var($block, $top_level = '$vars') {
+
+		if( $this->match('constant', $block) ) {
+			//remove 'C:'
+			return substr($block, 2);
+		}
+
+		//check if its a loop var.
+		if( $this->match('loop_var', $block) ) {
+
+			//if so then we need to extract the loop name
+			$loop_name = preg_replace($this->regex['loop_var'], '$1', $block);
+
+			//remove the loop name from the block.
+			$block = str_replace($loop_name, '', $block);
+
+			//change the top level to this loop.
+			//regex removes the trailing period at the end of the loop name.
+			$top_level = $this->convert_loop_name( preg_replace('#\\.$#', '', $loop_name) );
+		}
+
+		if( $this->match('var', $block) ) {
+			//check if its a namespaced var
+			if( is_int( strpos($block, ':') ) ) {
+
+				$varnames = explode(':', $block); // split = NAMESPACE1 NESTED NESTED2 VAR
+
+				foreach($varnames as $nest) {
+					$top_level .= "['$nest']";
+				}
+
+				return $top_level;
+			}
+			else {
+				return $top_level . '[\'' . $block .'\']';
+			}
+		}
+
+		return '';
+	}
+
+
+	private function parse_include_block($block, $template_directory = '') {
+		//use the template class to load the include.
+		//this way it uses the same load function that will check
+		//for a cached version.
+
+		$filename = preg_replace($this->regex['include_match'], '$1', $block);
+		$template = self::new($filename);
+		$content = null;
+
+		//if the new template is parsed, then this means
+		//a cached version was loaded and we can use that.
+		if($template->is_parsed()) {
+			$content = $template->get_parsed();
+		}
+		else {
+			$content = $template->get_content();
+		}
+
+		unset($template);
+
+		return $content ?: '';
+	}
+
+
+
+	private function parse_output_block($block, $top_level = '$vars') {
+
+		//remove any braces.
+		$block = preg_replace('#^\{|\}$#', '', $block);
+		$var_alias = $this->parse_var($block, $top_level);
+
+		//if its a constant we must use defined before output.
+		if( strpos($block, 'C:') === 0 ) {
+			return "<?php if(defined('$var_alias')): echo $var_alias; endif; ?>";
+		}
+		else {
+			return "<?php echo isset($var_alias) ? $var_alias : '' ?>";
+		}
+	}
+
+
+
+	private function parse_condition_block($condition) {
+
 		//split the condition block into the type of condition and the condition statements.
 		list($condition_type, $condition_parts)
-			= explode(' ^v^ ', preg_replace('#^(IF|ELSE|ELSEIF): (.+)$#', '$1 ^v^ $2', $condition) );
+			= explode(' ^#*#^ ', preg_replace($this->regex['condition_match'], '$1 ^#*#^ $2', $condition) );
 
-		$condition_parts = explode(' ', $condition_parts);
-		$new_condition_parts = array(); //build the fixed condition parts here.
+		$condition_parts = str_split($condition_parts);
+		$new_condition_parts = [];
+		$parsed_condition_parts = [];
+		$current_part = '';
+		$in_string = false;
 
-		foreach($condition_parts as $part)
-		{
-			//in order to support braces in the conditions we must check now.
-			if( $part[0] === '(' )
-			{
-				$new_condition_parts[] = '(';
-				$part = substr($part, 1);
-			}
+		//go through each single character.
+		foreach($condition_parts as $part) {
 
-			$closing_brace = false;
+			//if we're in a string we either end it or continue.
+			if($in_string !== false) {
+				$current_part .= $part;
 
-			if( substr($part, -1) === ')' )
-			{
-				$closing_brace = true;
-				$part = substr($part, 0, strlen($part) - 1);
-			}
-
-			if( preg_match($this->regex['output_block'], $part) ) //is this an output var used in the condition?
-			{
-				$part = $this->parse_output_block($part);
-
-				//is this a constant being used?
-				if(preg_match('#^[A-Z0-9_]+$#', $part))
-				{
-					$new_condition_parts[] = "(defined('$part') && $part)";
+				if($part === $in_string) {
+					$in_string = false;
+					$new_condition_parts[] = $current_part;
+					$current_part = '';
 				}
-				else
-				{
-					$new_condition_parts[] = $part;
+
+				continue;
+			}
+
+			//these break up a condition, so stop the current part and add it.
+			if( in_array($part, ['(', ')', ' ', '!']) ) {
+				if(!empty($current_part)) {
+					$new_condition_parts[] = $current_part;
 				}
-			}
-			elseif( preg_match($this->regex['operator'], $part) ) //is this part of the condition an operator?
-			{
-				$new_condition_parts[] = $this->operator($part);
-			}
-			else //it might be a string or int or bool literal. Leave it as it is.
-			{
 				$new_condition_parts[] = $part;
+				$current_part = '';
+				continue;
 			}
 
-			if($closing_brace)
-			{
-				$new_condition_parts[] = ')';
+			//beginning of a string.
+			if( $this->match('#[\'"`]#', $part) ) {
+				if(!empty($current_part)) {
+					$new_condition_parts[] = $current_part;
+				}
+				$in_string = $part;
+				$current_part = $part;
+				continue;
+			}
+
+			$current_part .= $part;
+		}
+
+		//add the final part that may have been missed without a last iteration.
+		if(!empty($current_part)) {
+			$new_condition_parts[] = $current_part;
+		}
+
+		//now its been sorted into pieces, we can begin parsing each piece.
+		foreach($new_condition_parts as $part) {
+			if( $this->match('var', $part) || $this->match('loop_var', $part) ) {
+				$parsed_condition_parts[] = $this->parse_var($part);
+			}
+			elseif( $this->match('operator', $part) ) {
+				$parsed_condition_parts[] = $this->parse_operator($part);
+			}
+			else {
+				$parsed_condition_parts[] = $part;
 			}
 		}
 
-		return '<?php ' . strtolower($condition_type) . ' (' . implode(' ', $new_condition_parts) . '): ?>';
+		return '<?php ' . strtolower($condition_type) . ' (' . implode($parsed_condition_parts) . '): ?>';
 	}
 
 
-	//parses namespace template blocks: {NAMESPACE:VAR} or {NAMESPACE1:NESTED:NESTED2:VAR}
-	private function parse_namespace($block, $top_level = '$vars')
-	{
-		$varnames = explode(':', $block); // split = NAMESPACE1 NESTED NESTED2 VAR
-		$alias = $top_level;
+	private function parse_loop_block($loop, $php_loop_alias = '$vars') {
 
-		foreach($varnames as $nest)
-		{
-			$alias .= "['$nest']";
-		}
-
-		return $alias;
-	}
-
-
-	private function parse_output_block($block, $top_level = '$vars')
-	{
-		$block = preg_replace('#^\{|\}$#', '', $block);
-
-		if( is_int( strpos($block, ':') ) ) // is this a namespaced var?
-		{
-			if( strpos($block, 'C:') === 0 ) // is this a constant?
-			{
-				return substr($block, 2);
-			}
-
-			return $this->parse_namespace($block, $top_level);
-		}
-		else
-		{
-			return $top_level . '[\'' . $block .'\']';
-		}
-	}
-
-
-	private function parse_loop_block($loop, $php_loop_alias = '$vars')
-	{
 		//first parse opening tag and get loop name.
-		$loop_name = preg_replace('#\\{LOOP: ([^\\}]+)\\}(?:.|[\n\r])*#', '$1', $loop);
-		$quoted_loop_name = preg_quote($loop_name);
-		$loop_name_alias = '$' . str_replace('.', '_', $loop_name); //create a name for the loop for in the php
+		$loop_name = preg_replace($this->regex['loop_match'], '$1', $loop);
 
-		if( strpos($loop_name, '.') )  // is this loop nested? Only the last part is needed.
-		{
+		//a loop name for the within the foreach context
+		$loop_name_alias = $this->convert_loop_name($loop_name);
+
+		//is this loop nested?
+		if( strpos($loop_name, '.') ) {
 			$nests = explode('.', $loop_name);
 			$php_loop_alias .= '[\'' . $nests[ count($nests) - 1 ] . '\']';
+			//$php_loop_alias .= "['" . str_replace('.', "']['", $loop_name) . "']";
 		}
-		else
-		{
-			$php_loop_alias .= '[\'' . $loop_name . '\']';
+		else {
+			$php_loop_alias .= "['$loop_name']";
 		}
 
 		$loop_start_replacement = "
 		<?php if(isset({$php_loop_alias}) && is_array({$php_loop_alias})):
 			{$loop_name_alias}_count = count({$php_loop_alias});
 			foreach({$php_loop_alias} as {$loop_name_alias}_index => {$loop_name_alias}):
-				{$loop_name_alias}['IS_FIRST_ROW'] = !!({$loop_name_alias}_index === 0);
-				{$loop_name_alias}['IS_ODD_ROW'] = !!({$loop_name_alias}_index % 2 === 0);
-				{$loop_name_alias}['IS_EVEN_ROW'] = !{$loop_name_alias}['IS_ODD_ROW'];
-				{$loop_name_alias}['IS_LAST_ROW'] = !!({$loop_name_alias}_index === {$loop_name_alias}_count - 1);
+				{$loop_name_alias}['IS_FIRST_ROW'] = ({$loop_name_alias}_index === 0) ? true : false;
+				{$loop_name_alias}['IS_ODD_ROW'] = ({$loop_name_alias}_index % 2 === 0) ? true : false;
+				{$loop_name_alias}['IS_EVEN_ROW'] = {$loop_name_alias}['IS_ODD_ROW'] ? false : true;
+				{$loop_name_alias}['IS_LAST_ROW'] = ({$loop_name_alias}_index === {$loop_name_alias}_count - 1) ? true : false;
 		?>";
 
-		//replace the start and end loop tags. We know it has an end tag since it was matched by our regex which includes end tag
+		//replace the start and end loop tags.
+		//We know it has an end tag since it was matched by our regex which includes end tag
 		$loop = str_replace("{LOOP: $loop_name}", $loop_start_replacement, $loop);
 		$loop = str_replace("{/LOOP: $loop_name}", '<?php endforeach; unset(' . $loop_name_alias . '_count); endif; ?>', $loop);
 
-		//now swap all the loop vars inside the loop
-		$loop_vars = array();
-		preg_match_all('#\\{' . $quoted_loop_name . '\\.[A-Za-z0-9_]+(:[A-Za-z0-9_]+)*\\}#', $loop, $loop_vars);
-		$loop_vars = $loop_vars[0];
+		//check for any loops nested inside this loop. and send them back through.
+		$loop_blocks = $this->matches('loop_match', $loop);
 
-		if($loop_vars)
-		{
-			foreach($loop_vars as $l_var)
-			{
-				//remove the loopname from the output block. Since it exists in our foreach alias
-				$varname = str_replace($loop_name . '.', '', $l_var);
-				$replacement = $this->parse_output_block($varname, $loop_name_alias);
-				$loop = str_replace($l_var, "<?php echo isset($replacement) ? $replacement : '' ?>", $loop);
+		if($loop_blocks) {
+			foreach($loop_blocks as $l) {
+				$loop = str_replace($l, $this->parse_loop_block($l, $loop_name_alias), $loop);
 			}
-		}
-
-		//now we swap any loop vars used inside condition within the loop.
-		$loop_vars = array();
-		preg_match_all('#\\{(?:IF|ELSE):.*? (' . $quoted_loop_name . '\\.[A-Za-z0-9_]{3,}(?::[A-Za-z0-9_]+)*)(?:\\s.*?)?\\}#', $loop, $loop_vars);
-		$conditions = $loop_vars[0];
-
-		if($conditions)
-		{
-			foreach($conditions as $c)
-			{
-				//match all occurences of loop vars in this conditional.
-				$condition_vars = array();
-				preg_match_all('#\s' . $quoted_loop_name . '\\.[A-Za-z0-9_]{3,}(?::[A-Za-z0-9_]+)*(?=\\s|\\})#', $c, $condition_vars);
-				$replacement_c = $c;
-				$condition_vars = $condition_vars[0];
-
-				if($condition_vars)
-				{
-					foreach($condition_vars as $c_var)
-					{
-						$fixedname = str_replace(' ' . $loop_name . '.', '', $c_var); //remove the loop name from the var
-						$replacement_c = str_replace($c_var, ' ' . $this->parse_output_block($fixedname, $loop_name_alias), $replacement_c);
-					}
-				}
-
-				//now all the loop vars in this condition have been replaced, replace the condition with our new fixed one.
-				$loop = str_replace($c, $replacement_c, $loop);
-			}
-		}
-
-		unset($conditions, $loop_name);
-
-		//last of all, check for any loops inside this loop. and send them back through.
-		$loop_blocks = array();
-		preg_match_all($this->regex['loop_match'], $loop, $loop_blocks);
-		$loop_blocks = $loop_blocks[0];
-
-		if($loop_blocks)
-		{
-			foreach($loop_blocks as $l) $loop = str_replace($l, $this->parse_loop_block($l, $loop_name_alias), $loop);
 		}
 
 		return $loop;
 	}
 
-
-	private function parse_include_block($block, $template_directory = '')
-	{
-		//get the file name.
-		$filename = $template_directory . '/' . preg_replace($this->regex['include_match'], '$1', $block);
-
-		if( file_exists($filename) )
-		{
-			return file_get_contents($filename);
-		}
-		else
-		{
-			$this->error('Can not find include template: ' . $filename);
-		}
-	}
-
-	private function operator($operator_alias)
-	{
-		switch($operator_alias)
-		{
+	private function parse_operator($operator_alias) {
+		switch($operator_alias) {
 			case 'not': return '!';
 			case 'and': return '&&';
 			case 'or' : return '||';
@@ -535,6 +439,56 @@ class TemplateParser implements Parser
 			case 'lte': return '<=';
 			case 'gte': return '>=';
 			default: return $operator_alias;
+		}
+	}
+
+	//wrapper for preg_match which only returns boolean.
+	private function match($preg, $str) {
+		if($preg[0] !== '#') {
+			$preg = $this->regex[$preg];
+		}
+
+		return preg_match($preg, $str) === 1 ? true : false;
+	}
+
+	private function matches($preg, $str) {
+		$result = [];
+
+		if($preg[0] !== '#') {
+			$preg = $this->regex[$preg];
+		}
+
+		preg_match_all($preg, $str, $result);
+
+		return $result && $result[0] ? $result[0] : [];
+	}
+
+	private function convert_loop_name($raw_name) {
+		$raw_name = str_replace('.', '_', $raw_name);
+
+		return '$' . $raw_name . '_loop';
+	}
+
+	private function error($message) {
+		if($this->handle_errors) {
+			$html = "
+			<!DOCTYPE HTML>
+			<html>
+				<head>
+					<title>Template Error</title>
+					<meta charset=\"utf-8\" />
+				</head>
+				<body>
+				<h3>Fatal Template Error</h3>
+				<p>$message</p>
+				</body>
+			</html>";
+
+			die($html);
+		}
+		else {
+			//templater doesn't handle errors so throw an exception and let another handler sort it.
+			throw new \Exception($message);
 		}
 	}
 };
