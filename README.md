@@ -14,7 +14,7 @@ $template->set('PAGE_TITLE', 'Welcome!');
 //Parse & Compile and display using preferred method
 die( $TemplateParser->compile($template) );
 ```
-
+Larger example included in `index.php` of various types of uses.
 
 ## Basic Template Vars:
 Template vars can contain 0-9, A-Z and _ and must be 2 or more characters in length.
