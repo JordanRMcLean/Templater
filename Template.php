@@ -34,7 +34,7 @@ class Template implements TemplateInterface {
 	/* Expiry time of templates in seconds.
 	*  0 to disable caching.
 	*/
-	private $max_cache_age = 0; //5 mins
+	private $max_cache_age = 300; //5 mins
 
 	/* Option if vars should be overwritten if using same name
 	*/
