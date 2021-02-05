@@ -1,5 +1,19 @@
 # Templater
-PHP/HTML templater
+PHP/HTML templater for MVC development.
+
+```php
+//TemplateParser used for parsing templates.
+$TemplateParser = new \Template\TemplateParser;
+
+//Start your template or templates
+$template = new \Template\Template('index.html');
+
+//assign variables for content.
+$template->set('PAGE_TITLE', 'Welcome!');
+
+//Parse & Compile and display using preferred method
+die( $TemplateParser->compile($template) );
+```
 
 
 ## Basic Template Vars:
