@@ -18,21 +18,21 @@ class TemplateParser
 	*  Can be edited to suit needs.
 	*/
 	private $regex = array(
-		'var_match'			=> '#\\{(?:C:|(?:[0-9a-z_]+\\.)+)?[0-9A-Z_]{2,}(:[0-9A-Z_]+)*\\}#',
+		'var_match'		=> '#\\{(?:C:|(?:[0-9a-z_]+\\.)+)?[0-9A-Z_]{2,}(:[0-9A-Z_]+)*\\}#',
 		'condition_match'	=> '#\\{(IF|ELSEIF):\\s(.+?)\\}#',
 		'loop_match'		=> '#\\{LOOP: ([0-9a-z_\\.]{2,})\\}(?:.|[\\n\\r])*?\\{/LOOP: \\1\\}#',
 		'include_match'		=> '#\\{INCLUDE: (.*?)\\}#',
 		'ignore_match'		=> '#\\{IGNORE\\}((?:.|[\\r\\n])*?)\\{/IGNORE\\}#',
 
 
-		'operator'			=> '#^([!=<>]=?|&&|(?:\\|\\|)|neq|eq|and|not|or|gt|lt|gte|lte)$#',
+		'operator'		=> '#^([!=<>]=?|&&|(?:\\|\\|)|neq|eq|and|not|or|gt|lt|gte|lte)$#',
 		'condition_break'	=> '#^[\\(\\)\s!]$#',
-		'var'				=> '#^(C:)?[0-9A-Z_]{2,}(:[0-9A-Z_]+)*$#',
-		'constant'			=> '#^C:[A-Z0-9_:]+$#',
-		'loop_var'			=> '#^((?:[0-9a-z_]+\\.)+)[0-9A-Z_]{2,}(?::[0-9A-Z_]+)*$#',
+		'var'			=> '#^(C:)?[0-9A-Z_]{2,}(:[0-9A-Z_]+)*$#',
+		'constant'		=> '#^C:[A-Z0-9_:]+$#',
+		'loop_var'		=> '#^((?:[0-9a-z_]+\\.)+)[0-9A-Z_]{2,}(?::[0-9A-Z_]+)*$#',
 
-		'endif'				=> '#\\{/IF\\}#',
-		'else'				=> '#\\{ELSE:\\s?\\}#',
+		'endif'			=> '#\\{/IF\\}#',
+		'else'			=> '#\\{ELSE:\\s?\\}#',
 		'ignore_tags'		=> '#\\{/?IGNORE\\}#',
 	);
 
