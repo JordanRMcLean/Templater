@@ -52,73 +52,6 @@ class TemplateParser
 		}
 	}
 
-	/* Compile template with the vars ready for rendering the output.
-	*/
-	public function compile(&$template) {
-		if( !is_object($template) || !($template instanceof Template) ) {
-			return $this->error('TemplateParse must receive Template object.');
-		}
-
-		//removed to allow 're-compiling'
-		/*if($template->is_compiled()) {
-			return $template->get_compiled();
-		}*/
-
-		//if it hasn't been parsed yet we must do that first.
-		//which is the long bit, which gets cached.
-		if(!$template->is_parsed()) {
-			$this->parse($template);
-		}
-
-		$parsed_content = $template->get_parsed();
-		$vars = $template->get_vars();
-
-		//Start output buffering
-		ob_start();
-
-		try {
-
-			//we're going to temporarily remove E_NOTICE for parsing the template.
-			//otherwise we'd get a notice error for any vars used in the template that haven't been set.
-			$current_error_level = error_reporting();
-			error_reporting($current_error_level & ~E_NOTICE);
-
-			//yes. eval is evil... but given that we have set the eval'd content
-			//the only vulnerabilities are if there is any php in the template.
-			//which is unlikely given templates are used to seperate html and php.
-			eval('?>' . $parsed_content);
-
-			//return the error reporting level.
-			error_reporting($current_error_level);
-		}
-		catch(\Throwable $e) {
-
-			//parsing has failed which means the template wasn't written correctly.
-			$lines = explode("\n", $parsed_content);
-			$line = $e->getLine();
-			$error_line = $lines[$line];
-
-			//move backwards until we have a line with content.
-			while( empty($error_line) || preg_match('#^[\s\t\r\n]+$#', $error_line) ) {
-				$error_line = $lines[ --$line ];
-
-				if($line === 0) {
-					break;
-				}
-			}
-
-			$message = 'Template Compiling Error: ' . $e->getMessage() . "\n at line " . $e->getLine() . ': ' . htmlspecialchars($error_line);
-			$this->error($message);
-		}
-
-		$compiled_content = ob_get_clean();
-
-		$template->set_compiled($compiled_content);
-
-		return $compiled_content;
-	}
-
-
 	/* Parses the template, turning it into executable PHP.
 	*  Returns the instance of this object so can chain the compile function ->parse()->compile()
 	*/
@@ -217,6 +150,73 @@ class TemplateParser
 
 		//return this object in order to optionally chain compile method straight after.
 		return $this;
+	}
+	
+	
+	/* Compile template with the vars ready for rendering the output.
+	*/
+	public function compile(&$template) {
+		if( !is_object($template) || !($template instanceof Template) ) {
+			return $this->error('TemplateParse must receive Template object.');
+		}
+
+		//removed to allow 're-compiling'
+		/*if($template->is_compiled()) {
+			return $template->get_compiled();
+		}*/
+
+		//if it hasn't been parsed yet we must do that first.
+		//which is the long bit, which gets cached.
+		if(!$template->is_parsed()) {
+			$this->parse($template);
+		}
+
+		$parsed_content = $template->get_parsed();
+		$vars = $template->get_vars();
+
+		//Start output buffering
+		ob_start();
+
+		try {
+
+			//we're going to temporarily remove E_NOTICE for parsing the template.
+			//otherwise we'd get a notice error for any vars used in the template that haven't been set.
+			$current_error_level = error_reporting();
+			error_reporting($current_error_level & ~E_NOTICE);
+
+			//yes. eval is evil... but given that we have set the eval'd content
+			//the only vulnerabilities are if there is any php in the template.
+			//which is unlikely given templates are used to seperate html and php.
+			eval('?>' . $parsed_content);
+
+			//return the error reporting level.
+			error_reporting($current_error_level);
+		}
+		catch(\Throwable $e) {
+
+			//parsing has failed which means the template wasn't written correctly.
+			$lines = explode("\n", $parsed_content);
+			$line = $e->getLine();
+			$error_line = $lines[$line];
+
+			//move backwards until we have a line with content.
+			while( empty($error_line) || preg_match('#^[\s\t\r\n]+$#', $error_line) ) {
+				$error_line = $lines[ --$line ];
+
+				if($line === 0) {
+					break;
+				}
+			}
+
+			$message = 'Template Compiling Error: ' . $e->getMessage() . "\n at line " . $e->getLine() . ': ' . htmlspecialchars($error_line);
+			$this->error($message);
+		}
+
+		$compiled_content = ob_get_clean();
+
+		$template->set_compiled($compiled_content);
+
+		return $compiled_content;
 	}
 
 	//---------------------------------------------
